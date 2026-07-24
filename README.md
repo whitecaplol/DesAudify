@@ -2,7 +2,7 @@
 A production-ready pipeline from audio to high-quality Desmos resynthesis
 
 ## Usage
-`python -m desaudify_cli.py <args>`
+`python desaudify_cli.py <args>`
 - Add `-h` as an argument to see the exact list (too lazy to write them all down here for now)
 
 ## Features
