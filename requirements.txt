@@ -1,0 +1,3 @@
+librosa==0.11.0
+numpy==2.5.1
+ssqueezepy==0.6.6
