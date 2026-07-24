@@ -44,13 +44,12 @@ def process_audio(audio_signal, sample_rate, target_frames_per_second=60, maximu
         Tx, _, ssq_freqs, *_ = ssq_stft(audio_signal, window="hann", n_fft=n_fft, win_len=win_len, hop_len=hop_length, fs=sample_rate)
 
         mags = np.abs(Tx) # type: ignore
-        max_mag = max(max_mag, np.max(mags) or 1e-9)
         min_idx, max_idx = np.searchsorted(ssq_freqs, [b["fmin"], b["fmax"]]) # type: ignore
         if max_idx <= min_idx:
             continue
 
         is_peak = np.zeros_like(mags, dtype=bool)
-        is_peak[1:-1, :] = (mags[1:-1, :] >= mags[:-2, :]) & (mags[1:-1, :] > mags[2:, :])
+        is_peak[1:-1, :] = (mags[1:-1, :] >= 0.0001) & (mags[1:-1, :] >= mags[:-2, :]) & (mags[1:-1, :] > mags[2:, :])
         is_peak[:max(1, min_idx), :] = is_peak[min(mags.shape[0] - 2, max_idx):, :] = False
 
         freq_idx, frame_idx = np.where(is_peak)
@@ -64,7 +63,10 @@ def process_audio(audio_signal, sample_rate, target_frames_per_second=60, maximu
 
         all_freqs.append(ssq_freqs[freq_idx] + p * (ssq_freqs[1] - ssq_freqs[0])) # type: ignore
         all_frames.append(frame_idx)
-        all_mags.append(mags[freq_idx, frame_idx] / max_mag)
+
+        mags = mags[freq_idx, frame_idx]
+        max_mag = max(max_mag, np.max(mags) or 1e-9)
+        all_mags.append(mags / max_mag)
 
     if not all_freqs:
         return np.zeros((0, 4)), dt_actual, fps_actual
@@ -123,7 +125,7 @@ def generate_desmos_schemas(pts, fps_actual, dt_actual, duration, time_range=Non
     if len(pts) == 0:
         return "", ""
 
-    start_sec, end_sec = time_range or (0.0, duration) # time_range is used internally by a di, but i'm too lazy to separate it out rn
+    start_sec, end_sec = time_range or (0.0, duration) # time_range is used internally, but i'm too lazy to separate it out rn
     start_ms, end_ms = round(start_sec * 1000), round(end_sec * 1000)
     total_frames = math.ceil((end_ms - start_ms) / dt_actual)
 
@@ -205,7 +207,6 @@ if __name__ == "__main__":
     print("Processing...")
     y, sr = librosa.load(args.input_file, sr=48000, offset=args.start, duration=None if args.end < 0 else args.end-args.start)
     pts, dt_actual, fps_actual = process_audio(y, sr, target_frames_per_second=args.fps, maximum_points_per_frame=args.poly, max_notes=args.notes)
-    pts = pts[pts[:, COLUMN_MAGNITUDE] >= 0.0001]
 
     data, proc = generate_desmos_schemas(pts, fps_actual, dt_actual, len(y)/sr)
 

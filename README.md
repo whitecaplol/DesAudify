@@ -2,13 +2,24 @@
 A production-ready pipeline from audio to high-quality Desmos resynthesis
 
 ## Usage
-`python desaudify_cli.py <args>`
-- Add `-h` as an argument to see the exact list (too lazy to write them all down here for now)
+`python desaudify_cli.py [-h] [--notes NOTES] [--poly POLY] [--fps FPS] [--start START] [--end END] input_file output_dir`
+
+Options (yoinked from argparse and slightly modified):
+- -h, --help     show help message and exit
+- --notes NOTES  Maximum note budget (Depends on hardware. Usually anything above 700,000 notes will likely require sharding if outputted data exceeds 5 MiB)
+- --poly POLY    Maximum concurrent notes per frame (Anything even as low as 32 works)
+- --fps FPS      How many frames per second to target (Recommended 60, though you can try 120 or higher with diminishing returns)
+- --start START  Start timestamp (in seconds as a float)
+- --end END      End timestamp (in seconds as a float)
 
 ## Features
 - High quality audio extraction using `ssqueezepy` to do Synchrosqueezed Multi-Resolution Short-Time Fourier Transform.
-- $O(1)$ indexing
+- Runs in vanilla Desmos
+  - No need for GodMode, DesModder, or other desmos extensions!
+- $O(1)$ indexing*
+  - As the note count gets very large, things do slow down. I am working on a way to alleviate this.
 - Dynamic polyphony
+  - Means quiet/insignificant parts don't take up redundant space.
 - Supports up to 8.7 million+ notes
     - Includes sharding script for larger files.
     - Exact limit depends on how much RAM your computer/browser can handle.
