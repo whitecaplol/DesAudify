@@ -18,6 +18,9 @@ A production-ready pipeline from audio to high-quality Desmos resynthesis
 ## As seen in
 whitecaplol's channel
 
+### Examples
+- Looping the rooms: https://www.desmos.com/calculator/phsdrta4un
+
 ## Notes
 1. This is in beta, since the export format is still being optimized for faster performance.
     - Some refactoring had to be made in preparation for publishing. Some issues may arise that I have not accounted for; simply open up an issue and I'll look into it.
