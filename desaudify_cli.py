@@ -1,16 +1,10 @@
 import math
-import sys
 from pathlib import Path
 
 import numpy as np
 from ssqueezepy import ssq_stft
 
-# This preamble is required because trying to juggle both streamlit (internally) and external-facing open source is really annoying
-current_dir = str(Path(__file__).resolve().parent)
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
-
-import templates # noqa: E402
+import templates
 
 COLUMN_FREQUENCY = 0
 COLUMN_START_TIME = 1
