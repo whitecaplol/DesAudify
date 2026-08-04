@@ -213,7 +213,7 @@ if __name__ == "__main__":
     parser.add_argument("--fps", type=int, help="How many frames per second to target", default=60)
     parser.add_argument("--start", type=float, help="Start timestamp", default=0)
     parser.add_argument("--end", type=float, help="End timestamp", default=-1)
-    parser.add_argument("--minimum_magnitude", type=float, help="Minimum magnitude (not dB). Range from 0 to 1.", default=0.0001)
+    parser.add_argument("--min_mag", type=float, help="Minimum magnitude (not dB). Range from 0 to 1.", default=0.0001)
 
     args = parser.parse_args()
 
