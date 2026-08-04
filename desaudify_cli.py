@@ -9,17 +9,18 @@ COLUMN_START_TIME = 1
 COLUMN_END_TIME = 2
 COLUMN_MAGNITUDE = 3
 
-def process_audio(audio_signal, sample_rate, target_frames_per_second=60, maximum_points_per_frame=192, max_notes=2600000):
+def process_audio(audio_signal, sample_rate, target_frames_per_second=60, maximum_points_per_frame=192, max_notes=2600000, minimum_magnitude=0.0001):
     hop_length = int(sample_rate / target_frames_per_second)
     time_step_duration = hop_length / sample_rate
     dt_actual, fps_actual = time_step_duration * 1000.0, sample_rate / hop_length
     signal_len = len(audio_signal)
 
-    # These bands aren't perfect but they're still really good anyways. You can tune them if you want I guess.
+    # These bands aren't perfect but they're still relatively good. You can tune them if you want.
     bands = [
-        {"fmin": 20.0,   "fmax": 250.0,  "win_len": 4096, "n_fft": 8192},
+        {"fmin": 20.0,   "fmax": 250.0,  "win_len": 4096, "n_fft": 16384},
         {"fmin": 250.0,  "fmax": 2000.0, "win_len": 2048, "n_fft": 4096},
-        {"fmin": 2000.0, "fmax": 20000.0,"win_len": 512,  "n_fft": 1024}
+        {"fmin": 2000.0, "fmax": 6000.0, "win_len": 512,  "n_fft": 1024},
+        {"fmin": 6000.0, "fmax": 20000.0,"win_len": 256,  "n_fft": 512}
     ]
 
     all_freqs, all_frames, all_mags = [], [], []
@@ -41,29 +42,28 @@ def process_audio(audio_signal, sample_rate, target_frames_per_second=60, maximu
             continue
 
         is_peak = np.zeros_like(mags, dtype=bool)
-        is_peak[1:-1, :] = (mags[1:-1, :] >= 0.0001) & (mags[1:-1, :] >= mags[:-2, :]) & (mags[1:-1, :] > mags[2:, :])
+        is_peak[1:-1, :] = (mags[1:-1, :] >= mags[:-2, :]) & (mags[1:-1, :] > mags[2:, :])
         is_peak[:max(1, min_idx), :] = is_peak[min(mags.shape[0] - 2, max_idx):, :] = False
 
         freq_idx, frame_idx = np.where(is_peak)
         if len(freq_idx) == 0:
             continue
 
-        log_mag = np.log(np.maximum(1e-9, mags))
-        a, beta, c = log_mag[freq_idx - 1, frame_idx], log_mag[freq_idx, frame_idx], log_mag[freq_idx + 1, frame_idx]
-        denom = a - 2.0 * beta + c
-        p = np.clip(np.where(np.abs(denom) > 1e-9, 0.5 * (a - c) / denom, 0.0), -0.5, 0.5)
-
-        all_freqs.append(ssq_freqs[freq_idx] + p * (ssq_freqs[1] - ssq_freqs[0])) # type: ignore
+        all_freqs.append(ssq_freqs[freq_idx]) # type: ignore
         all_frames.append(frame_idx)
 
         mags = mags[freq_idx, frame_idx]
         max_mag = max(max_mag, np.max(mags) or 1e-9)
-        all_mags.append(mags / max_mag)
+        all_mags.append(mags)
 
     if not all_freqs:
         return np.zeros((0, 4)), dt_actual, fps_actual
 
     all_freqs, all_frames, all_mags = map(np.concatenate, (all_freqs, all_frames, all_mags))
+    all_mags /= max_mag
+
+    sound_threshold = np.where(all_mags > minimum_magnitude)
+    all_freqs, all_frames, all_mags = all_freqs[sound_threshold], all_frames[sound_threshold], all_mags[sound_threshold]
 
     sort_idx = np.lexsort((-all_mags, all_frames))
     all_frames, all_freqs, all_mags = all_frames[sort_idx], all_freqs[sort_idx], all_mags[sort_idx]
@@ -213,12 +213,13 @@ if __name__ == "__main__":
     parser.add_argument("--fps", type=int, help="How many frames per second to target", default=60)
     parser.add_argument("--start", type=float, help="Start timestamp", default=0)
     parser.add_argument("--end", type=float, help="End timestamp", default=-1)
+    parser.add_argument("--minimum_magnitude", type=float, help="Minimum magnitude (not dB). Range from 0 to 1.", default=0.0001)
 
     args = parser.parse_args()
 
     print("Processing...")
     y, sr = librosa.load(args.input_file, sr=48000, offset=args.start, duration=None if args.end < 0 else args.end-args.start)
-    pts, dt_actual, fps_actual = process_audio(y, sr, target_frames_per_second=args.fps, maximum_points_per_frame=args.poly, max_notes=args.notes)
+    pts, dt_actual, fps_actual = process_audio(y, sr, target_frames_per_second=args.fps, maximum_points_per_frame=args.poly, max_notes=args.notes, minimum_magnitude=args.minimum_magnitude)
 
     data, proc = generate_desmos_schemas(pts, fps_actual, dt_actual, len(y)/sr)
 
