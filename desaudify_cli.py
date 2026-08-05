@@ -76,7 +76,7 @@ def process_audio(audio_signal, sample_rate, target_frames_per_second=60, maximu
     final_array = np.column_stack((all_freqs[keep], start_times, start_times + time_step_duration, all_mags[keep]))
 
     if len(final_array) > max_notes:
-        scores = final_array[:, COLUMN_MAGNITUDE] / (1200 * np.log2(final_array[:, COLUMN_FREQUENCY]) + 1e-9)
+        scores = final_array[:, COLUMN_MAGNITUDE] / (np.log(final_array[:, COLUMN_FREQUENCY]) + 1e-12)
         top_idx = np.argpartition(scores, -max_notes)[-max_notes:]
         final_array = final_array[top_idx[np.argsort(final_array[top_idx, COLUMN_START_TIME])]]
 
@@ -149,7 +149,7 @@ def generate_desmos_schemas(pts, fps_actual, dt_actual, duration, time_range=Non
 
     f_part = np.round(np.log(np.clip(pool[:, COLUMN_FREQUENCY], 20.0, 20000.0) / 20.0) / np.log(1000.0) * 9999).astype(np.int32)
     g_clip = np.clip(pool[:, COLUMN_MAGNITUDE], 0.0, 1.0)
-    g_part = np.where(g_clip > 0.0001, 1 + np.round((20.0 * np.log10(np.maximum(1e-9, g_clip)) + 80.0) / 80.0 * 998), 0).astype(np.int32)
+    g_part = np.where(g_clip >= 0.0001, np.round(998 / 4 * (np.log10(g_clip) + 4) + 1), 0).astype(np.int32)
     pool_vals = f_part * 1000 + g_part
 
     valid = pool_vals[flat_n] > 0
