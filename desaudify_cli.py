@@ -60,7 +60,9 @@ def process_audio(audio_signal, sample_rate, target_frames_per_second=60, maximu
         return np.zeros((0, 4)), dt_actual, fps_actual
 
     all_freqs, all_frames, all_mags = map(np.concatenate, (all_freqs, all_frames, all_mags))
-    all_mags /= max_mag
+    all_mags /= max(max_mag, 1)
+
+    original_mags = all_mags.sum(axis=0)
 
     sound_threshold = np.where(all_mags > minimum_magnitude)
     all_freqs, all_frames, all_mags = all_freqs[sound_threshold], all_frames[sound_threshold], all_mags[sound_threshold]
@@ -72,15 +74,19 @@ def process_audio(audio_signal, sample_rate, target_frames_per_second=60, maximu
     intra_idx = np.arange(len(all_frames)) - np.repeat(group_starts, group_counts)
     keep = intra_idx < maximum_points_per_frame
 
-    start_times = all_frames[keep] * time_step_duration
-    final_array = np.column_stack((all_freqs[keep], start_times, start_times + time_step_duration, all_mags[keep]))
+    all_freqs, all_frames, all_mags = all_freqs[keep], all_frames[keep], all_mags[keep]
 
-    if len(final_array) > max_notes:
-        scores = final_array[:, COLUMN_MAGNITUDE] / (np.log(final_array[:, COLUMN_FREQUENCY]) + 1e-12)
-        top_idx = np.argpartition(scores, -max_notes)[-max_notes:]
-        final_array = final_array[top_idx[np.argsort(final_array[top_idx, COLUMN_START_TIME])]]
+    if len(all_freqs) > max_notes:
+        scores = all_mags / (np.log(all_freqs) + 1e-12)
+        top_idx = np.sort(np.argpartition(scores, -max_notes)[-max_notes:])
+        all_freqs, all_frames, all_mags = all_freqs[top_idx], all_frames[top_idx], all_mags[top_idx]
 
-    return final_array, dt_actual, fps_actual
+    all_mags *= (original_mags / all_mags.sum(axis=0))
+
+    start_times = all_frames * time_step_duration
+    end_times = start_times + time_step_duration
+
+    return np.column_stack((all_freqs, start_times, end_times, all_mags)), dt_actual, fps_actual
 
 def assign_notes_to_frames(mid_times, total_frames, start_ms, dt):
     f_idx = np.floor((mid_times - start_ms) / dt).astype(np.int64)
