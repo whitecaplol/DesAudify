@@ -19,8 +19,8 @@ def process_audio(audio_signal, sample_rate, target_frames_per_second=60, maximu
     bands = [
         {"fmin": 20.0,   "fmax": 250.0,  "win_len": 4096, "n_fft": 16384},
         {"fmin": 250.0,  "fmax": 2000.0, "win_len": 2048, "n_fft": 4096},
-        {"fmin": 2000.0, "fmax": 6000.0, "win_len": 512,  "n_fft": 1024},
-        {"fmin": 6000.0, "fmax": 20000.0,"win_len": 256,  "n_fft": 512}
+        {"fmin": 2000.0, "fmax": 8000.0, "win_len": 512,  "n_fft": 1024},
+        {"fmin": 8000.0, "fmax": 20000.0,"win_len": 256,  "n_fft": 512}
     ]
 
     all_freqs, all_frames, all_mags = [], [], []
@@ -62,7 +62,8 @@ def process_audio(audio_signal, sample_rate, target_frames_per_second=60, maximu
     all_freqs, all_frames, all_mags = map(np.concatenate, (all_freqs, all_frames, all_mags))
     all_mags /= max(max_mag, 1)
 
-    original_mags = all_mags.sum(axis=0)
+    num_frames = all_frames.max() + 1
+    orig_frame_sums = np.bincount(all_frames, weights=all_mags, minlength=num_frames)
 
     sound_threshold = np.where(all_mags > minimum_magnitude)
     all_freqs, all_frames, all_mags = all_freqs[sound_threshold], all_frames[sound_threshold], all_mags[sound_threshold]
@@ -77,11 +78,18 @@ def process_audio(audio_signal, sample_rate, target_frames_per_second=60, maximu
     all_freqs, all_frames, all_mags = all_freqs[keep], all_frames[keep], all_mags[keep]
 
     if len(all_freqs) > max_notes:
-        scores = all_mags / (np.log(all_freqs) + 1e-12)
+        num_frames = all_frames.max() + 1
+        frame_maxes = np.zeros(num_frames)
+        np.maximum.at(frame_maxes, all_frames, all_mags)
+
+        scores = all_mags / np.maximum(frame_maxes[all_frames], 1e-12)
+
         top_idx = np.sort(np.argpartition(scores, -max_notes)[-max_notes:])
         all_freqs, all_frames, all_mags = all_freqs[top_idx], all_frames[top_idx], all_mags[top_idx]
 
-    all_mags *= (original_mags / all_mags.sum(axis=0))
+    remaining_frame_sums = np.bincount(all_frames, weights=all_mags, minlength=len(orig_frame_sums))
+    scale_factors = np.where(remaining_frame_sums > 0, orig_frame_sums / (remaining_frame_sums + 1e-24), 1.0)
+    all_mags *= scale_factors[all_frames]
 
     start_times = all_frames * time_step_duration
     end_times = start_times + time_step_duration
