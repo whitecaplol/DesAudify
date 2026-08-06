@@ -41,11 +41,10 @@ def process_audio(audio_signal, sample_rate, target_frames_per_second=60, maximu
         if max_idx <= min_idx:
             continue
 
-        is_peak = np.zeros_like(mags, dtype=bool)
-        is_peak[1:-1, :] = (mags[1:-1, :] >= mags[:-2, :]) & (mags[1:-1, :] > mags[2:, :])
-        is_peak[:max(1, min_idx), :] = is_peak[min(mags.shape[0] - 2, max_idx):, :] = False
+        within_band = np.ones_like(mags, dtype=bool)
+        within_band[:max(1, min_idx), :] = within_band[min(mags.shape[0] - 2, max_idx):, :] = False
 
-        freq_idx, frame_idx = np.where(is_peak)
+        freq_idx, frame_idx = np.where(within_band)
         if len(freq_idx) == 0:
             continue
 
