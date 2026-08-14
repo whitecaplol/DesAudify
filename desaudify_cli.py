@@ -17,7 +17,7 @@ def process_audio(audio_signal, sample_rate, target_frames_per_second=60, maximu
 
     # These bands aren't perfect but they're still relatively good. You can tune them if you want.
     bands = [
-        {"fmin": 20.0,   "fmax": 250.0,  "win_len": 4096, "n_fft": 16384},
+        {"fmin": 20.0,   "fmax": 250.0,  "win_len": 4096, "n_fft": 8192},
         {"fmin": 250.0,  "fmax": 2000.0, "win_len": 2048, "n_fft": 4096},
         {"fmin": 2000.0, "fmax": 8000.0, "win_len": 512,  "n_fft": 1024},
         {"fmin": 8000.0, "fmax": 20000.0,"win_len": 256,  "n_fft": 512}
@@ -233,8 +233,7 @@ if __name__ == "__main__":
 
     print("Processing...")
     y, sr = librosa.load(args.input_file, sr=48000, offset=args.start, duration=None if args.end < 0 else args.end-args.start)
-    pts, dt_actual, fps_actual = process_audio(y, sr, target_frames_per_second=args.fps, maximum_points_per_frame=args.poly, max_notes=args.notes, minimum_magnitude=args.minimum_magnitude)
-
+    pts, dt_actual, fps_actual = process_audio(y, sr, target_frames_per_second=args.fps, maximum_points_per_frame=args.poly, max_notes=args.notes, minimum_magnitude=args.min_mag)
     data, proc = generate_desmos_schemas(pts, fps_actual, dt_actual, len(y)/sr)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
