@@ -127,7 +127,7 @@ def pack_frame_notes(temp_vals, n_packed):
     packed = [pack_two_notes(a, b) for a, b in pairs]
     return packed[0::3], packed[1::3], packed[2::3]
 
-def generate_processing_schema(minmax_calls, maxpoly_calls, mxp_calls, mnp_calls, s_cond_parts, ct_inits, tones_parts):
+def generate_processing_schema(maxpoly_calls, mxp_calls, mnp_calls, s_cond_parts, ct_inits, tones_parts):
     tones_def = (
         f"t_{{ones}}=\\left\\{{{','.join(tones_parts)}\\right\\}}"
         if len(tones_parts) > 1
@@ -135,15 +135,13 @@ def generate_processing_schema(minmax_calls, maxpoly_calls, mxp_calls, mnp_calls
     )
 
     lines = [
-        f"m_{{inmax}}=\\left[{','.join(minmax_calls)}\\right]",
         f"m_{{axpoly}}=6\\max\\left({','.join(maxpoly_calls)}\\right)",
-        f"M=\\left\\{{m_{{inmax}}.x\\le t_{0}<m_{{inmax}}.y,0\\right\\}}",
         f"m_{{axpitch}}=\\max\\left({','.join(mxp_calls)}\\right)",
         f"m_{{inpitch}}=\\min\\left({','.join(mnp_calls)}\\right)",
         f"s_{{upercond}}={','.join(s_cond_parts)}",
         *ct_inits,
         tones_def,
-        "d_{uration}=\\max\\left(m_{{inmax}}.y\\right)",
+        f"d_{{uration}}=f_{{minmax}}\\left(p_{{{len(tones_parts)}}}\\right).y",
     ]
     return "\n".join(lines)
 
@@ -190,7 +188,7 @@ def generate_desmos_schemas(pts, fps_actual, dt_actual, duration, time_range=Non
     if current_chunk:
         chunks.append(current_chunk)
 
-    data_lines, minmax, maxpoly, mxp, mnp, s_cond, ct_inits, tones = [], [], [], [], [], [], [], []
+    data_lines, maxpoly, mxp, mnp, s_cond, ct_inits, tones = [], [], [], [], [], [], []
     for i, chunk in enumerate(chunks, 1):
         num_notes = [n_p for _, _, n_p in chunk]
         packed = [pack_frame_notes(notes, n_p) for _, notes, n_p in chunk]
@@ -202,16 +200,15 @@ def generate_desmos_schemas(pts, fps_actual, dt_actual, duration, time_range=Non
         data_lines.append(f"t_{{{i}}}=\\left(\\left[{','.join(map(str, l1))}\\right],\\left[{','.join(map(str, l2))}\\right],\\left[{','.join(map(str, l3))}\\right]\\right)")
         data_lines.append(f"p_{{{i}}}=\\left[{','.join(map(str, p_elems))}\\right]")
 
-        minmax.append(f"f_{{minmax}}\\left(p_{{{i}}}\\right)")
         maxpoly.append(f"\\max\\left(p_{{{i}}}\\left[3...\\right]\\right)")
         mxp.append(f"g_{{mxp}}\\left(t_{{{i}}}\\right)")
         mnp.append(f"g_{{mnp}}\\left(t_{{{i}}}\\right)")
-        s_cond.append(f"\\left\\{{M\\left[{i}\\right]=1:\\left(c_{{t{i}}}\\to t_{0}\\right),\\left\\{{c_{{t{i}}}\\ge 0:c_{{t{i}}}\\to-1\\right\\}}\\right\\}}")
+        s_cond.append(f"\\left\\{{f_{{minmax}}\\left(p_{{{i}}}\\right).x\\le t_{{0}}<f_{{minmax}}\\left(p_{{{i}}}\\right).y:\\left(c_{{t{i}}}\\to t_{{0}}\\right),\\left\\{{c_{{t{i}}}\\ge 0:c_{{t{i}}}\\to-1\\right\\}}\\right\\}}")
         ct_inits.append(f"c_{{t{i}}}=0")
         tones.append(f"c_{{t{i}}}\\ge 0:t_{{h}}\\left(t_{{{i}}},i_{{i}}\\left(p_{{{i}}}\\right),p_{{{i}}}\\left[1\\right],p_{{{i}}}\\left[2\\right],c_{{t{i}}}\\right)")
 
     return "\n".join(data_lines), generate_processing_schema(
-        minmax_calls=minmax, maxpoly_calls=maxpoly, mxp_calls=mxp, mnp_calls=mnp,
+        maxpoly_calls=maxpoly, mxp_calls=mxp, mnp_calls=mnp,
         s_cond_parts=s_cond, ct_inits=ct_inits, tones_parts=tones
     )
 
