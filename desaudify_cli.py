@@ -1,5 +1,7 @@
 import math
+from itertools import accumulate
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from ssqueezepy import ssq_stft
@@ -127,23 +129,41 @@ def pack_frame_notes(temp_vals, n_packed):
     packed = [pack_two_notes(a, b) for a, b in pairs]
     return packed[0::3], packed[1::3], packed[2::3]
 
-def generate_processing_schema(maxpoly_calls, mxp_calls, mnp_calls, s_cond_parts, ct_inits, tones_parts):
-    tones_def = (
-        f"t_{{ones}}=\\left\\{{{','.join(tones_parts)}\\right\\}}"
-        if len(tones_parts) > 1
-        else f"t_{{ones}}={tones_parts[0]}"
-    )
+def format_desmos_list(var_name: str, plain_list: list[Any] | tuple[list[Any], list[Any], list[Any]], max_fragments: int | None = None, max_list_size: int = 10000) -> str:
+    output = ''
+    true_length = len(plain_list) if type(plain_list) == list else len(plain_list[0])
 
-    lines = [
-        f"m_{{axpoly}}=6\\max\\left({','.join(maxpoly_calls)}\\right)",
-        f"m_{{axpitch}}=\\max\\left({','.join(mxp_calls)}\\right)",
-        f"m_{{inpitch}}=\\min\\left({','.join(mnp_calls)}\\right)",
-        f"s_{{upercond}}={','.join(s_cond_parts)}",
-        *ct_inits,
-        tones_def,
-        f"d_{{uration}}=f_{{minmax}}\\left(p_{{{len(tones_parts)}}}\\right).y",
-    ]
-    return "\n".join(lines)
+    est_fragments, remainder = divmod(true_length, max_list_size)
+    fragment_count = est_fragments + int(remainder > 0)
+    max_fragments = min(fragment_count, max_fragments) if max_fragments is not None else fragment_count
+    est_lines, remainder = divmod(fragment_count, max_fragments)
+    lines = est_lines + int(remainder > 0)
+
+    for j in range(lines):
+        output += rf"{var_name[0]}_{{{var_name[1:]}{f'fragment{j}' if lines > 1 else ''}}}\left(l_{{o}},h_{{i}}\right)={r'\operatorname{join}\left(' if max_fragments > 1 else ''}"
+        for i in range(max_fragments):
+            offset = max_list_size * (j * max_fragments + i)
+            lo = offset + 1
+            hi = min(offset + max_list_size, true_length)
+            fragment_length = hi - lo + 1
+            if fragment_length <= 0:
+                output = output.removesuffix(',')
+                break
+
+            if type(plain_list) == list:
+                l_str = rf'\left[{','.join(map(str, plain_list[lo-1:hi]))}\right]'
+            elif type(plain_list) == tuple:
+                l_str = fr'\left(\left[{','.join(map(str, plain_list[0][lo-1:hi]))}\right],\left[{','.join(map(str, plain_list[1][lo-1:hi]))}\right],\left[{','.join(map(str, plain_list[2][lo-1:hi]))}\right]\right)'
+            else:
+                raise TypeError("plain_list is not of expected type")
+
+            output += rf'\left\{{\left\{{{lo}\le l_{{o}}\le{hi},0\right\}}+\left\{{{lo}\le h_{{i}}\le{hi},0\right\}}+\left\{{l_{{o}}<{lo},0\right\}}\left\{{h_{{i}}>{hi},0\right\}}\ge1:{l_str}\left[\max\left(1,\min\left({fragment_length},l_{{o}}-{offset}\right)\right)...\min\left({fragment_length},\max\left(1,h_{{i}}-{offset}\right)\right)\right],\left[\right]\right\}}{',' if i + 1 < max_fragments else ''}'
+        output += '\\right)\n' if max_fragments > 1 else ''
+
+    if lines > 1:
+        output += rf'{var_name[0]}_{{{var_name[1:]}}}\left(l_{{o}},h_{{i}}\right)=\operatorname{{join}}\left({','.join([rf'{var_name[0]}_{{{var_name[1:]}{f'fragment{i}'}}}\left(l_{{o}},h_{{i}}\right)' for i in range(lines)])}\right)'
+
+    return output
 
 def generate_desmos_schemas(pts, fps_actual, dt_actual, duration, time_range=None):
     if len(pts) == 0:
@@ -177,46 +197,23 @@ def generate_desmos_schemas(pts, fps_actual, dt_actual, duration, time_range=Non
     for f, g in zip(unique_f, grouped_vals):
         segment_vals[f] = g
 
-    chunks, current_chunk, current_packed = [], [], 0
+    everything = []
     for k, notes in enumerate(segment_vals):
         n_packed = (len(notes) + 5) // 6
-        if current_chunk and (current_packed + n_packed > 10000 or len(current_chunk) >= 9998):
-            chunks.append(current_chunk)
-            current_chunk, current_packed = [], 0
-        current_chunk.append((round(start_ms + k * dt_actual), notes, n_packed))
-        current_packed += n_packed
-    if current_chunk:
-        chunks.append(current_chunk)
+        everything.append((round(start_ms + k * dt_actual), notes, n_packed))
 
-    data_lines, maxpoly, mxp, mnp, s_cond, ct_inits, tones = [], [], [], [], [], [], []
-    for i, chunk in enumerate(chunks, 1):
-        num_notes = [n_p for _, _, n_p in chunk]
-        packed = [pack_frame_notes(notes, n_p) for _, notes, n_p in chunk]
-        l1 = [x for p in packed for x in p[0]]
-        l2 = [x for p in packed for x in p[1]]
-        l3 = [x for p in packed for x in p[2]]
+    packed = [pack_frame_notes(notes, n_p) for _, notes, n_p in everything]
+    tones = format_desmos_list("tonedata", ([x for p in packed for x in p[0]], [x for p in packed for x in p[1]], [x for p in packed for x in p[2]]))
+    timings = format_desmos_list("tonetimings", list(accumulate([1] + [n_p for _, _, n_p in everything])))
 
-        p_elems = [chunk[0][0] - int(1000 * start_sec), int(fps_actual)] + num_notes
-        data_lines.append(f"t_{{{i}}}=\\left(\\left[{','.join(map(str, l1))}\\right],\\left[{','.join(map(str, l2))}\\right],\\left[{','.join(map(str, l3))}\\right]\\right)")
-        data_lines.append(f"p_{{{i}}}=\\left[{','.join(map(str, p_elems))}\\right]")
-
-        maxpoly.append(f"\\max\\left(p_{{{i}}}\\left[3...\\right]\\right)")
-        mxp.append(f"g_{{mxp}}\\left(t_{{{i}}}\\right)")
-        mnp.append(f"g_{{mnp}}\\left(t_{{{i}}}\\right)")
-        s_cond.append(f"\\left\\{{f_{{minmax}}\\left(p_{{{i}}}\\right).x\\le t_{{0}}<f_{{minmax}}\\left(p_{{{i}}}\\right).y:\\left(c_{{t{i}}}\\to t_{{0}}\\right),\\left\\{{c_{{t{i}}}\\ge 0:c_{{t{i}}}\\to-1\\right\\}}\\right\\}}")
-        ct_inits.append(f"c_{{t{i}}}=0")
-        tones.append(f"c_{{t{i}}}\\ge 0:t_{{h}}\\left(t_{{{i}}},i_{{i}}\\left(p_{{{i}}}\\right),p_{{{i}}}\\left[1\\right],p_{{{i}}}\\left[2\\right],c_{{t{i}}}\\right)")
-
-    return "\n".join(data_lines), generate_processing_schema(
-        maxpoly_calls=maxpoly, mxp_calls=mxp, mnp_calls=mnp,
-        s_cond_parts=s_cond, ct_inits=ct_inits, tones_parts=tones
-    )
+    return f"{tones}\n{timings}", (rf'v_{{idindex}}=\operatorname{{floor}}\left(\left(t_{{0}}-{everything[0][0] - int(1000 * start_sec)}\right)\cdot 0.001\cdot {int(fps_actual)}\right)''\n'f'a_{{udioduration}}={everything[-1][0] - int(1000 * start_sec)}')
 
 if __name__ == "__main__":
     import argparse
+
     import librosa
 
-    parser = argparse.ArgumentParser(description="A production-ready (technically in beta) audio to Desmos pipeline")
+    parser = argparse.ArgumentParser(description="A production-ready audio to Desmos pipeline")
     parser.add_argument("input_file", type=Path, help="Path to audio file")
     parser.add_argument("output_dir", type=Path, help="Path to output directory")
     parser.add_argument("--notes", type=int, help="Maximum note budget", default=2400000)
