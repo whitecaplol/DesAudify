@@ -140,12 +140,16 @@ def format_desmos_list(var_name: str, plain_list: list[Any] | tuple[list[Any], l
     lines = est_lines + int(remainder > 0)
 
     for j in range(lines):
-        output += rf"{var_name[0]}_{{{var_name[1:]}{f'fragment{j}' if lines > 1 else ''}}}\left(l_{{o}},h_{{i}}\right)={r'\operatorname{join}\left(' if max_fragments > 1 else ''}"
+        output += rf"{var_name[0]}_{{{var_name[1:]}{f'fragment{j}' if lines > 1 else ''}}}\left(l_{{o}},h_{{i}}\right)="
+        has_join_prefix = False
         for i in range(max_fragments):
             offset = max_list_size * (j * max_fragments + i)
             lo = offset + 1
             hi = min(offset + max_list_size, true_length)
             fragment_length = hi - lo + 1
+            if i == 0 and (max_fragments > 1 and fragment_length == 10000 and hi < true_length):
+                has_join_prefix = True
+                output += r'\operatorname{join}\left('
             if fragment_length <= 0:
                 output = output.removesuffix(',')
                 break
@@ -158,10 +162,10 @@ def format_desmos_list(var_name: str, plain_list: list[Any] | tuple[list[Any], l
                 raise TypeError("plain_list is not of expected type")
 
             output += rf'\left\{{\left\{{{lo}\le l_{{o}}\le{hi},0\right\}}+\left\{{{lo}\le h_{{i}}\le{hi},0\right\}}+\left\{{l_{{o}}<{lo},0\right\}}\left\{{h_{{i}}>{hi},0\right\}}\ge1:{l_str}\left[\max\left(1,\min\left({fragment_length},l_{{o}}-{offset}\right)\right)...\min\left({fragment_length},\max\left(1,h_{{i}}-{offset}\right)\right)\right],\left[\right]\right\}}{',' if i + 1 < max_fragments else ''}'
-        output += '\\right)\n' if max_fragments > 1 else ''
+        output += '\\right)\n' if has_join_prefix else '\n'
 
     if lines > 1:
-        output += rf'{var_name[0]}_{{{var_name[1:]}}}\left(l_{{o}},h_{{i}}\right)=\operatorname{{join}}\left({','.join([rf'{var_name[0]}_{{{var_name[1:]}{f'fragment{i}'}}}\left(l_{{o}},h_{{i}}\right)' for i in range(lines)])}\right)'
+        output += rf'{var_name[0]}_{{{var_name[1:]}}}\left(l_{{o}},h_{{i}}\right)=\operatorname{{join}}\left({','.join([rf'{var_name[0]}_{{{var_name[1:]}{f'fragment{i}'}}}\left(l_{{o}},h_{{i}}\right)' for i in range(lines)])}\right)''\n'
 
     return output
 
@@ -200,13 +204,13 @@ def generate_desmos_schemas(pts, fps_actual, dt_actual, duration, time_range=Non
     everything = []
     for k, notes in enumerate(segment_vals):
         n_packed = (len(notes) + 5) // 6
-        everything.append((round(start_ms + k * dt_actual), notes, n_packed))
+        everything.append((round(start_ms + k * dt_actual), notes if n_packed > 0 else np.array([0], dtype=np.int32), max(1, n_packed)))
 
     packed = [pack_frame_notes(notes, n_p) for _, notes, n_p in everything]
     tones = format_desmos_list("tonedata", ([x for p in packed for x in p[0]], [x for p in packed for x in p[1]], [x for p in packed for x in p[2]]))
     timings = format_desmos_list("tonetimings", list(accumulate([1] + [n_p for _, _, n_p in everything])))
 
-    return f"{tones}\n{timings}", (rf'v_{{idindex}}=\operatorname{{floor}}\left(\left(t_{{0}}-{everything[0][0] - int(1000 * start_sec)}\right)\cdot 0.001\cdot {int(fps_actual)}\right)''\n'f'a_{{udioduration}}={everything[-1][0] - int(1000 * start_sec)}')
+    return f"{tones}\n{timings}", (rf'a_{{udindex}}=\operatorname{{floor}}\left(\left(t_{{0}}-{everything[0][0] - int(1000 * start_sec)}\right)\cdot 0.001\cdot {int(fps_actual)}\right)''\n'f'a_{{udioduration}}={everything[-1][0] - int(1000 * start_sec)}')
 
 if __name__ == "__main__":
     import argparse

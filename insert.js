@@ -1,5 +1,5 @@
 // paste this into console in js unless you like pain. in which case copy and paste data_schema.txt into a folder.
-async function insert(folderName, autoreplace, txt) { // suggestion: use String.raw`...`
+async function insert(folderName, autoreplace, delay, txt) { // suggestion: use String.raw`...`
     const sleep = (ms) => new Promise(_ => setTimeout(_, ms));
     const state = Calc.getState();
     const folderId = `notes_from_${Date.now()}`;
@@ -12,7 +12,7 @@ async function insert(folderName, autoreplace, txt) { // suggestion: use String.
     hidden: true
   };
 
-  const lines = txt.split(/\r?\n/).map((line, i) => ({
+  const lines = txt.split(/\r?\n/).filter(line => line.length > 0).map((line, i) => ({
     id: `${folderId}_line_${i}`,
     latex: autoreplace ? line.replace("[", "\\left[").replace("]", "\\right]").replace("(", "\\left(").replace(")", "\\right)") : line
   }));
@@ -39,7 +39,7 @@ async function insert(folderName, autoreplace, txt) { // suggestion: use String.
       latex: `${dummyLines.length - (index + 1)}`,
     });
     Calc.setExpression(line);
-    await sleep(2e-3 * line.latex.length);
+    if (delay === true) await sleep(2e-3 * line.latex.length);
   }
 
   Calc.removeExpression({ id: `${folderId}_temp_stats` });
