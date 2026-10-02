@@ -18,20 +18,22 @@ Options (yoinked from argparse and slightly modified):
 - Runs in vanilla Desmos
   - No need for GodMode, DesModder, or other desmos extensions!
 - $O(1)$ indexing*
-  - As the note count gets very large, things do slow down. I am working on a way to alleviate this.
+  - Using the all new BigList 2.
 - Dynamic polyphony
   - Means quiet/insignificant parts don't take up redundant space.
 - Supports up to 8.7 million+ notes
     - Includes sharding script for larger files.
     - Exact limit depends on how much RAM your computer/browser can handle.
-- Real-time 60+ fps resynthesis (varies by device)
+- Real-time 120+ fps resynthesis (varies by device)
     - Usually, to get better performance, you'll need to downsample.
+    - 60 fps is expected on average, unless you're on a Chromebook.
 
 ## As seen in
 whitecaplol's channel
 
 ### Examples
-- Looping the rooms: https://www.desmos.com/calculator/phsdrta4un
+- Looping the rooms (pre-BigList 2): https://www.desmos.com/calculator/phsdrta4un
+- Amethyst (Using BigList 2): https://www.desmos.com/calculator/nonkqd4rpo
 
 ## Notes
 1. This is in beta, since the export format is still being optimized for faster performance.

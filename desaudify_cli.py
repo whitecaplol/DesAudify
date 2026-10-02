@@ -1,7 +1,7 @@
 import math
 from itertools import accumulate
 from pathlib import Path
-from typing import Any
+from collections.abc import Sequence
 
 import numpy as np
 from ssqueezepy import ssq_stft
@@ -111,65 +111,86 @@ def pack_two_notes(a, b):
     a_int, b_int = int(max(a, b)), int(min(a, b))
     return (a_int - b_int) * 10000000 + b_int
 
-def pack_frame_notes(temp_vals, n_packed):
+def pack_frame_notes(temp_vals):
     vals = np.sort(temp_vals)
-    K = n_packed * 3
-
     if len(vals) % 2 != 0:
         vals = np.append(vals, 0)
-
     pairs = vals.reshape(-1, 2)
+    return [pack_two_notes(a, b) for a, b in pairs]
 
-    if len(pairs) > K:
-        pairs = pairs[:K]
-    elif len(pairs) < K:
-        padding = np.zeros((K - len(pairs), 2), dtype=temp_vals.dtype)
-        pairs = np.vstack([pairs, padding])
+def get_sanitized_string(string: str) -> str:
+    return f'{string[0]}_{{{string[1:]}}}'
 
-    packed = [pack_two_notes(a, b) for a, b in pairs]
-    return packed[0::3], packed[1::3], packed[2::3]
-
-def format_desmos_list(var_name: str, plain_list: list[Any] | tuple[list[Any], list[Any], list[Any]], max_fragments: int | None = None, max_list_size: int = 10000) -> str:
+def format_desmos_list(var_name: str, plain_list: Sequence, max_mega_fragments: int | None = None, max_fragments: int | None = None, max_list_size: int = 10000) -> str:
+    if (max_mega_fragments is not None and max_mega_fragments < 1): max_mega_fragments = None
+    if (max_fragments is not None and max_fragments < 1): max_fragments = None
+    elif (max_fragments is not None):
+        max_fragments = min(1024, max_fragments)
     output = ''
-    true_length = len(plain_list) if type(plain_list) == list else len(plain_list[0])
 
-    est_fragments, remainder = divmod(true_length, max_list_size)
-    fragment_count = est_fragments + int(remainder > 0)
-    max_fragments = min(fragment_count, max_fragments) if max_fragments is not None else fragment_count
-    est_lines, remainder = divmod(fragment_count, max_fragments)
-    lines = est_lines + int(remainder > 0)
+    current_matrix_position = 0
+    current_mega_fragments = 0
+    current_global_fragments = 0
 
-    for j in range(lines):
-        output += rf"{var_name[0]}_{{{var_name[1:]}{f'fragment{j}' if lines > 1 else ''}}}\left(l_{{o}},h_{{i}}\right)="
-        has_join_prefix = False
-        for i in range(max_fragments):
-            offset = max_list_size * (j * max_fragments + i)
-            lo = offset + 1
-            hi = min(offset + max_list_size, true_length)
-            fragment_length = hi - lo + 1
-            if i == 0 and (max_fragments > 1 and fragment_length == 10000 and hi < true_length):
-                has_join_prefix = True
-                output += r'\operatorname{join}\left('
-            if fragment_length <= 0:
-                output = output.removesuffix(',')
-                break
+    def getTrailingCharacter():
+        if (current_matrix_position >= 1024): return ''
+        return '&' if current_matrix_position % 32 > 0 else '\\\\'
 
-            if type(plain_list) == list:
-                l_str = rf'\left[{','.join(map(str, plain_list[lo-1:hi]))}\right]'
-            elif type(plain_list) == tuple:
-                l_str = fr'\left(\left[{','.join(map(str, plain_list[0][lo-1:hi]))}\right],\left[{','.join(map(str, plain_list[1][lo-1:hi]))}\right],\left[{','.join(map(str, plain_list[2][lo-1:hi]))}\right]\right)'
-            else:
-                raise TypeError("plain_list is not of expected type")
+    def close_matrix():
+        nonlocal output, current_matrix_position
+        while (0 < current_matrix_position < 1024):
+            output += getTrailingCharacter()
+            current_matrix_position += 1
+        if (output[-14:] != r'\right)\right]'):
+            output += r'\end{bmatrix}'
+            output += fr'\left[1+\operatorname{{mod}}\left(\operatorname{{floor}}\left(\frac{{\operatorname{{ceil}}\left(\frac{{k}}{{{max_list_size}}}\right)-1}}{{32}}\right),32\right);1+\operatorname{{mod}}\left(\operatorname{{ceil}}\left(\frac{{k}}{{{max_list_size}}}\right)-1,32\right)\right]\left[1+\operatorname{{mod}}\left(k-1,{max_list_size}\right)\right]'
 
-            output += rf'\left\{{\left\{{{lo}\le l_{{o}}\le{hi},0\right\}}+\left\{{{lo}\le h_{{i}}\le{hi},0\right\}}+\left\{{l_{{o}}<{lo},0\right\}}\left\{{h_{{i}}>{hi},0\right\}}\ge1:{l_str}\left[\max\left(1,\min\left({fragment_length},l_{{o}}-{offset}\right)\right)...\min\left({fragment_length},\max\left(1,h_{{i}}-{offset}\right)\right)\right],\left[\right]\right\}}{',' if i + 1 < max_fragments else ''}'
-        output += '\\right)\n' if has_join_prefix else '\n'
+    for i in range(0, len(plain_list), max_list_size):
+        if (current_matrix_position == 0 == current_mega_fragments):
+            current_global_fragments += 1
+        if (current_mega_fragments == 0):
+            current_mega_fragments += 1
+            output += rf'{get_sanitized_string(f'{var_name}{current_global_fragments}')}\left(k\right)=\left\{{'
+        if (current_matrix_position == 0):
+            if (current_mega_fragments > 1):
+                output += ','
+            total_num_fragments = current_mega_fragments if max_mega_fragments is None else (current_global_fragments - 1) * max_mega_fragments + current_mega_fragments
+            output += rf'{min(1 + (total_num_fragments - 1) * 1024 * max_list_size, len(plain_list))}\le k \le{min((total_num_fragments) * 1024 * max_list_size, len(plain_list))}:\begin{{bmatrix}}'
+        output += rf'\left[{','.join(map(str, plain_list[i:i+max_list_size]))}\right]'
+        current_matrix_position += 1
+        if (i+max_list_size >= len(plain_list)):
+            output += r'.\operatorname{join}\left(\operatorname{repeat}\left(0,k\right)\right)'.replace("k", str(i+max_list_size - len(plain_list)))
+            break
+        if (current_matrix_position < 1024 and (max_fragments is None or current_matrix_position < max_fragments)):
+            output += getTrailingCharacter()
+            continue
+        close_matrix()
+        current_matrix_position = 0
+        current_mega_fragments += 1
+        if (max_mega_fragments is None or current_mega_fragments < max_mega_fragments): continue
+        current_mega_fragments = 0
+        output += r'\right\}''\n'
 
-    if lines > 1:
-        output += rf'{var_name[0]}_{{{var_name[1:]}}}\left(l_{{o}},h_{{i}}\right)=\operatorname{{join}}\left({','.join([rf'{var_name[0]}_{{{var_name[1:]}{f'fragment{i}'}}}\left(l_{{o}},h_{{i}}\right)' for i in range(lines)])}\right)''\n'
+    close_matrix()
+    if output[-1] != '\n':
+        output += r'\right\}''\n'
+
+    output += f'{get_sanitized_string(var_name)}\\left(l\\right)='
+
+    if max_mega_fragments is not None and current_global_fragments > 1:
+        output += '\\left\\{'
+        for i in range(current_global_fragments):
+            if i > 0:
+                output += ','
+            output += f'{min(1 + i * max_list_size * (max_fragments if max_fragments is not None else 1024) * max_mega_fragments, len(plain_list))} \\le k \\le {min((1 + i) * max_list_size * (max_fragments if max_fragments is not None else 1024) * max_mega_fragments, len(plain_list))}:{get_sanitized_string(f'{var_name}{i+1}')}\\left(k\\right)'
+        output += '\\right\\}'
+    else:
+        output += f'{get_sanitized_string(f'{var_name}1')}\\left(k\\right)'
+    output += r'\operatorname{for}k=l'
 
     return output
 
-def generate_desmos_schemas(pts, fps_actual, dt_actual, duration, time_range=None):
+def generate_desmos_schemas(pts, fps_actual, dt_actual, duration, time_range=None, max_lists_per_fragment: int | None = None, max_lists_per_mega_fragment: int | None = None):
     if len(pts) == 0:
         return "", ""
 
@@ -203,12 +224,11 @@ def generate_desmos_schemas(pts, fps_actual, dt_actual, duration, time_range=Non
 
     everything = []
     for k, notes in enumerate(segment_vals):
-        n_packed = (len(notes) + 5) // 6
+        n_packed = (len(notes) + 1) // 2
         everything.append((round(start_ms + k * dt_actual), notes if n_packed > 0 else np.array([0], dtype=np.int32), max(1, n_packed)))
 
-    packed = [pack_frame_notes(notes, n_p) for _, notes, n_p in everything]
-    tones = format_desmos_list("tonedata", ([x for p in packed for x in p[0]], [x for p in packed for x in p[1]], [x for p in packed for x in p[2]]))
-    timings = format_desmos_list("tonetimings", list(accumulate([1] + [n_p for _, _, n_p in everything])))
+    tones = format_desmos_list("tonedata", ([note for frame in (pack_frame_notes(notes) for _, notes, _ in everything) for note in frame]), max_fragments=max_lists_per_fragment, max_mega_fragments=max_lists_per_mega_fragment)
+    timings = format_desmos_list("tonetimings", list(accumulate([1] + [n_p for _, _, n_p in everything])), max_fragments=max_lists_per_fragment, max_mega_fragments=max_lists_per_mega_fragment)
 
     return f"{tones}\n{timings}", (rf'a_{{udindex}}=\operatorname{{floor}}\left(\left(t_{{0}}-{everything[0][0] - int(1000 * start_sec)}\right)\cdot 0.001\cdot {int(fps_actual)}\right)''\n'f'a_{{udioduration}}={everything[-1][0] - int(1000 * start_sec)}')
 
@@ -225,6 +245,8 @@ if __name__ == "__main__":
     parser.add_argument("--fps", type=int, help="How many frames per second to target", default=60)
     parser.add_argument("--start", type=float, help="Start timestamp", default=0)
     parser.add_argument("--end", type=float, help="End timestamp", default=-1)
+    parser.add_argument("--max_lists_per_fragment", type=int, help="Maximum sublists per BigList fragment. Any integer less than 1 means no limit.", default=42)
+    parser.add_argument("--max_lists_per_mega_fragment", type=int, help="Maximum sublists per BigList megafragment. Any integer less than 1 means no limit.", default=1)
     parser.add_argument("--min_mag", type=float, help="Minimum magnitude (not dB). Range from 0 to 1.", default=0.0001)
 
     args = parser.parse_args()
@@ -232,7 +254,7 @@ if __name__ == "__main__":
     print("Processing...")
     y, sr = librosa.load(args.input_file, sr=48000, offset=args.start, duration=None if args.end < 0 else args.end-args.start)
     pts, dt_actual, fps_actual = process_audio(y, sr, target_frames_per_second=args.fps, maximum_points_per_frame=args.poly, max_notes=args.notes, minimum_magnitude=args.min_mag)
-    data, proc = generate_desmos_schemas(pts, fps_actual, dt_actual, len(y)/sr)
+    data, proc = generate_desmos_schemas(pts, fps_actual, dt_actual, len(y)/sr, max_lists_per_fragment=args.max_lists_per_fragment, max_lists_per_mega_fragment=args.max_lists_per_mega_fragment)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     with open(args.output_dir / "data_schema.txt", "w") as f:
