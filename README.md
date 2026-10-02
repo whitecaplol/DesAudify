@@ -18,7 +18,7 @@ Options (yoinked from argparse and slightly modified):
 - Runs in vanilla Desmos
   - No need for GodMode, DesModder, or other desmos extensions!
 - $O(1)$ indexing*
-  - Using the all new BigList 2.
+  - Using the new BigList 2.
 - Dynamic polyphony
   - Means quiet/insignificant parts don't take up redundant space.
 - Supports up to 8.7 million+ notes
@@ -38,5 +38,5 @@ whitecaplol's channel
 ## Notes
 1. This is in beta, since the export format is still being optimized for faster performance.
     - Some refactoring had to be made in preparation for publishing. Some issues may arise that I have not accounted for; simply open up an issue and I'll look into it.
-2. Currently requires a template and some manual work. You can either write your own (for some reason) or just yoink this one: https://www.desmos.com/calculator/dv7amzb7vs
-3. `insert.js` and `autoshard.py` help to simplify importing things into Desmos.
+2. Currently requires a template and a bit of manual work. You can either write your own (for some reason) or just yoink this one: https://www.desmos.com/calculator/p8gb4nnc5y
+3. `insert.js` helps to simplify importing things into Desmos.
